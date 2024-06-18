@@ -1,5 +1,33 @@
 #include "structs.h"
 
+int validarData(const char *data) {
+    int dia, mes, ano;
+    if (sscanf(data, "%2d/%2d/%4d", &dia, &mes, &ano) != 3) {
+        return 0;
+    }
+    if (dia < 1 || dia > 31 || mes < 1 || mes > 12 || ano < 1000 || ano > 9999) {
+        return 0;
+    }
+    return 1;
+}
+
+int validarLitragem(const char *litros) {
+    int ponto = 0;
+    for (int i = 0; litros[i] != '\0'; i++) {
+        if (!isdigit(litros[i])) {
+            if (litros[i] == '.' && ponto == 0) {
+                ponto = 1;
+            } else {
+                return 0;
+            }
+        }
+    }
+    double qtd = atof(litros);
+    if (qtd <= 0) {
+        return 0;
+    }
+    return 1;
+}
 
 int carregarDados(Dados *a, const char *filename, int *count){
     Dados unico;
@@ -18,13 +46,28 @@ int carregarDados(Dados *a, const char *filename, int *count){
 
     while (fgets(linha, sizeof(linha), file))
     {
-        sscanf(linha, "%s %s", string_data, string_litros);
+        if (sscanf(linha, "%10s %19s", string_data, string_litros) != 2) {
+            printf("Erro ao ler a linha: %s\n", linha);
+            fclose(file);
+            return 0;
+        }
+
+        if (!validarData(string_data)) {
+            printf("Data inválida: %s\n", string_data);
+            fclose(file);
+            return 0;
+        }
+        if (!validarLitragem(string_litros)) {
+            printf("Litragem inválida: %s\n", string_litros);
+            fclose(file);
+            return 0;
+        }
 
         sscanf(string_data, "%2[0-9]/%2[0-9]/%4[0-9]", dia, mes, ano);
 
         //printf("Data: %s/%s/%s\n", dia, mes, ano);
 
-        unico.qtd = strtod(string_litros, &caractere_nao_convertido);
+        unico.qtd = strtold(string_litros, &caractere_nao_convertido);
         unico.dia = strtol(dia, &caractere_nao_convertido, 10);
         unico.mes = strtol(mes, &caractere_nao_convertido, 10);
         unico.ano = strtol(ano, &caractere_nao_convertido, 10);
@@ -39,11 +82,12 @@ int carregarDados(Dados *a, const char *filename, int *count){
         (*count)++;
     }
     fclose(file);
+
     return count;
     
 }
 
-void array2Bin(int *count, Dados *a){
+void array2Bin(int *count, Dados *a, const char *nome){
     FILE *file = fopen("reg.bin", "ab+");
     if (!file)
     {
@@ -54,7 +98,6 @@ void array2Bin(int *count, Dados *a){
     fwrite(a, sizeof(Dados), *count, file);
     
     fclose(file);
-    printf("Lote inserido!");
 }
 
 void binSumCsv() {
@@ -90,7 +133,7 @@ void binSumCsv() {
     printf("Sumatorio feito com Sucesso!");
 }
 
-void binToCsv(Dados *a, int *count){
+void binToCsv(){
     FILE *fileBin = fopen("reg.bin", "rb");
     if (!fileBin)
     {
@@ -108,13 +151,11 @@ void binToCsv(Dados *a, int *count){
 
     fprintf(fileCsv, "Data, Litros, Arquivo\n");
 
-
-    double qtdTotal = 0.0;
     Dados temp;
 
     while (fread(&temp, sizeof(Dados), 1, fileBin) == 1)
     {
-        fprintf(fileCsv, "%d/%d/%d,%.1f,%s\n", temp.dia, temp.mes, temp.ano, temp.qtd, temp.nome);
+        fprintf(fileCsv, "%02d/%02d/%04d,%.1f,%s\n", temp.dia, temp.mes, temp.ano, temp.qtd, temp.nome);
     }
     
     fclose(fileBin);
@@ -125,6 +166,7 @@ void binToCsv(Dados *a, int *count){
 
 char* recupera_nome_arquivo_fisico_txt(int argc, char *argv[]){    
     //printf("%d %s %s\n",argc, argv[0], argv[1]);
+    fflush(stdin);
     if (argc != 2) return NULL;
     return argv[1];
 }
@@ -169,13 +211,25 @@ int excluirLote(const char *nome) {
 
 int main(int argc, char const *argv[])
 {
+    
     setlocale(LC_ALL, "Portuguese");
-    int count= 0;
+    setlocale(LC_NUMERIC, "C");
+    int count = 0;
     Dados a[100];
     printf("Arquivo selecionado: %s\n",argv[1]);
     char *nomeArq = recupera_nome_arquivo_fisico_txt(argc, argv);
     int op = 0;
-    carregarDados(&a, nomeArq, &count);
+   
+    if (nomeArq == NULL) {
+        printf("Nenhum arquivo de texto foi fornecido.\n");
+        return 1;
+    }
+
+    if (!carregarDados(a, nomeArq, &count)) {
+        printf("Erro ao carregar dados do arquivo %s. Programa será encerrado.\n", nomeArq);
+        return 1;
+    }
+    array2Bin(&count, &a, argv[1]);
 
     do
     {
@@ -187,12 +241,25 @@ int main(int argc, char const *argv[])
         printf(" 4 - Listagem (csv) \n");
         printf(" 5 - Encerrar  \n");  
         printf("\n");
+        fflush(stdin);
         op=input_d("Digite uma opção: [1-5]:");
+        //getchar();
 
         switch (op)
         {
         case 1:
-            array2Bin(&count, &a);
+            fflush(stdin);
+            printf("Digite o nome do lote que deseja incluir: ");
+            fgets(nome, sizeof(nome), stdin);
+            nome[strcspn(nome, "\n")] = '\0';
+            count = 0;
+            // carregarDados(a, nome, &count);
+            if (!carregarDados(a, nome, &count)) {
+                printf("Erro ao carregar dados. Programa será encerrado.\n");
+                return 1;
+            }
+            array2Bin(&count, a, nome);
+            printf("Lote inserido!");
             break;
         case 2:
             fflush(stdin);
@@ -205,7 +272,7 @@ int main(int argc, char const *argv[])
             binSumCsv();
             break;
         case 4:
-            binToCsv(&a, count);
+            binToCsv();
             break;
         case 5: 
             printf("Saindo...!");
